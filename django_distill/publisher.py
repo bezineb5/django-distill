@@ -1,7 +1,7 @@
 from django_distill.errors import DistillPublishError
 
 
-def publish_dir(local_dir, backend, stdout):
+def publish_dir(local_dir, backend, stdout, verify=True):
     stdout('Authenticating')
     backend.authenticate()
     stdout('Getting file indexes')
@@ -35,10 +35,11 @@ def publish_dir(local_dir, backend, stdout):
         stdout('Publishing: {} -> {}'.format(f, remote_f))
         backend.upload_file(f, backend.remote_path(f))
         url = backend.remote_url(f)
-        stdout('Verifying: {}'.format(url))
-        if not backend.check_file(f, url):
-            err = 'Remote file {} failed hash check'
-            raise DistillPublishError(err.format(url))
+        if verify:
+            stdout('Verifying: {}'.format(url))
+            if not backend.check_file(f, url):
+                err = 'Remote file {} failed hash check'
+                raise DistillPublishError(err.format(url))
     # delete any orphan files
     for f in to_delete:
         stdout('Deleting remote: {}'.format(f))
