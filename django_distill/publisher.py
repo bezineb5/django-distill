@@ -1,18 +1,18 @@
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 
 from django_distill.errors import DistillPublishError
 
 
-def publish_dir(local_dir, backend, stdout, verify=True, parallel_publish=1):
+def publish_dir(backend, stdout, verify=True, parallel_publish=1, skip_delete_remote=False):
     stdout('Authenticating')
     backend.authenticate()
     stdout('Getting file indexes')
-    remote_files = backend.list_remote_files()
+    remote_files = set() if skip_delete_remote else backend.list_remote_files()
     local_files = backend.list_local_files()
-    local_dirs = backend.list_local_dirs()
     to_upload = set()
     to_delete = set()
     local_files_r = set()
+
     # check local files to upload
     for f in local_files:
         remote_f = backend.remote_path(f)
@@ -27,12 +27,13 @@ def publish_dir(local_dir, backend, stdout, verify=True, parallel_publish=1):
                 to_upload.add(f)
             else:
                 stdout(f'File fresh: {remote_f}')
+
     # check for remote files to delete
     for f in remote_files:
         if f not in local_files_r:
             to_delete.add(f)
 
-    with ThreadPoolExecutor(max_workers=parallel_publish) as executor:
+    with ProcessPoolExecutor(max_workers=parallel_publish) as executor:
         # upload any new or changed files
         executor.map(lambda f: _publish_file(backend, f, verify, stdout), to_upload)
         # delete any orphan files
