@@ -1,4 +1,4 @@
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 
 from django_distill.errors import DistillPublishError
 
@@ -33,7 +33,7 @@ def publish_dir(backend, stdout, verify=True, parallel_publish=1, skip_delete_re
         if f not in local_files_r:
             to_delete.add(f)
 
-    with ProcessPoolExecutor(max_workers=parallel_publish) as executor:
+    with ThreadPoolExecutor(max_workers=parallel_publish) as executor:
         # upload any new or changed files
         executor.map(lambda f: _publish_file(backend, f, verify, stdout), to_upload)
         # delete any orphan files
