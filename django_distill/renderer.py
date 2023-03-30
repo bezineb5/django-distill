@@ -402,8 +402,8 @@ def get_renderer(urls_to_distill):
 def render_to_dir(output_dir, urls_to_distill, stdout, number_of_workers=1):
     load_urls(stdout)
     # Split the urls into number_of_workers groups
-    urls_to_distill = [urls_to_distill[i::number_of_workers] for i in range(number_of_workers)]
-    renderers = [get_renderer(urls) for urls in urls_to_distill]
+    urls_to_distill_part = [urls_to_distill[i::number_of_workers] for i in range(number_of_workers)]
+    renderers = [get_renderer(urls_part) for urls_part in urls_to_distill_part]
     with ThreadPoolExecutor(max_workers=number_of_workers) as executor:
         executor.map(lambda r: process_renderer_urls(output_dir, r, stdout), renderers)
     return True
