@@ -274,6 +274,12 @@ rendering, this is just a shortcut to save you typing an extra command.
 `--exclude-staticfiles`: Do not copy any static files at all, only render output from
 Django views.
 
+`--parallel-render [number of threads]`: Render pages in parallel using multiple threads.
+This can significantly speed up rendering time if you have a large number of pages to
+render. However, exact speedup depends on how sensitive your views are to
+concurrency, due to the Global Intepreter Lock (GIL) of Python.
+The default number of threads is 1.
+
 **Note**  If any of your views contain a Python error then rendering will fail
 then the stack trace will be printed to the terminal and the rendering command
 will exit with a status code of 1.

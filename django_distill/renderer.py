@@ -3,6 +3,7 @@ import inspect
 import logging
 import os
 import types
+from concurrent.futures import ThreadPoolExecutor
 from shutil import copy2
 from django.utils import translation
 from django.conf import settings
@@ -398,9 +399,17 @@ def get_renderer(urls_to_distill):
     return render_cls(urls_to_distill)
 
 
-def render_to_dir(output_dir, urls_to_distill, stdout):
+def render_to_dir(output_dir, urls_to_distill, stdout, number_of_workers=1):
     load_urls(stdout)
-    renderer = get_renderer(urls_to_distill)
+    # Split the urls into number_of_workers groups
+    urls_to_distill = [urls_to_distill[i::number_of_workers] for i in range(number_of_workers)]
+    renderers = [get_renderer(urls) for urls in urls_to_distill]
+    with ThreadPoolExecutor(max_workers=number_of_workers) as executor:
+        executor.map(lambda r: process_renderer_urls(output_dir, r, stdout), renderers)
+    return True
+
+
+def process_renderer_urls(output_dir, renderer, stdout):
     for page_uri, file_name, http_response in renderer.render():
         full_path, local_uri = get_filepath(output_dir, file_name, page_uri)
         content = http_response.content
@@ -409,7 +418,6 @@ def render_to_dir(output_dir, urls_to_distill, stdout):
         msg = 'Rendering page: {} -> {} ["{}", {} bytes] {}'
         stdout(msg.format(local_uri, full_path, mime, len(content), renamed))
         write_file(full_path, content)
-    return True
 
 
 def render_single_file(output_dir, view_name, *args, **kwargs):
