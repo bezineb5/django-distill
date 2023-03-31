@@ -2,6 +2,7 @@ import errno
 import inspect
 import logging
 import os
+import queue
 import types
 from concurrent.futures import ThreadPoolExecutor
 from shutil import copy2
@@ -399,13 +400,27 @@ def get_renderer(urls_to_distill):
     return render_cls(urls_to_distill)
 
 
+class iterable_queue:
+    def __init__(self, list_items):
+        self.queue = queue.SimpleQueue()
+        for item in list_items:
+            self.queue.put(item)
+
+    def __iter__(self):
+        while True:
+            try:
+                yield self.queue.get(block=False)
+            except queue.Empty:
+                return
+
+
 def render_to_dir(output_dir, urls_to_distill, stdout, number_of_workers=1):
     load_urls(stdout)
-    # Split the urls into number_of_workers groups
-    urls_to_distill_part = [urls_to_distill[i::number_of_workers] for i in range(number_of_workers)]
-    renderers = [get_renderer(urls_part) for urls_part in urls_to_distill_part]
+    # Create a synchronized queue to store the urls to distill
+    urls_to_distill_queue = iterable_queue(urls_to_distill)
+    renderer = get_renderer(urls_to_distill_queue)
     with ThreadPoolExecutor(max_workers=number_of_workers) as executor:
-        executor.map(lambda r: process_renderer_urls(output_dir, r, stdout), renderers)
+        executor.map(lambda _: process_renderer_urls(output_dir, renderer, stdout), [0]*number_of_workers)
     return True
 
 
