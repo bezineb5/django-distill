@@ -3,6 +3,7 @@ import inspect
 import logging
 import os
 import types
+from concurrent.futures import ThreadPoolExecutor
 from shutil import copy2
 from django.utils import translation
 from django.conf import settings
@@ -184,16 +185,24 @@ class DistillRender(object):
         return uri, file_name, render
 
     def render_all_urls(self):
+        num_workers = int(getattr(settings, "DISTILL_RENDERER_WORKERS", "1"))
+        with ThreadPoolExecutor(max_workers=num_workers) as executor:
+            yield executor.map(lambda args: self.render_single_url(*args), self.list_all_urls())
+
+    def render_single_url(self, url, file_name_base, status_codes, view_name, a, k, param_set):
+        if not param_set:
+            param_set = ()
+        elif self._is_str(param_set):
+            param_set = (param_set,)
+        uri = self.generate_uri(url, view_name, param_set)
+        render = self.render_view(uri, status_codes, param_set, a, k)
+        file_name = self._get_filename(file_name_base, uri, param_set)
+        yield uri, file_name, render
+
+    def list_all_urls(self):
         for url, distill_func, file_name_base, status_codes, view_name, a, k in self.urls_to_distill:
             for param_set in self.get_uri_values(distill_func, view_name):
-                if not param_set:
-                    param_set = ()
-                elif self._is_str(param_set):
-                    param_set = (param_set,)
-                uri = self.generate_uri(url, view_name, param_set)
-                render = self.render_view(uri, status_codes, param_set, a, k)
-                file_name = self._get_filename(file_name_base, uri, param_set)
-                yield uri, file_name, render
+                yield url, file_name_base, status_codes, view_name, a, k, param_set
 
     def render(self, view_name=None, status_codes=None, view_args=None, view_kwargs=None):
         if view_name:
@@ -232,7 +241,7 @@ class DistillRender(object):
             else:
                 v = func()
         except Exception as e:
-            raise DistillError('Failed to call distill function: {}'.format(e))
+            raise DistillError(f'Failed to call distill function: {e}')
         if not v:
             return (None,)
         elif isinstance(v, (list, tuple)):
@@ -240,8 +249,8 @@ class DistillRender(object):
         elif isinstance(v, types.GeneratorType):
             return list(v)
         else:
-            err = 'Distill function returned an invalid type: {}'
-            raise DistillError(err.format(type(v)))
+            err = f'Distill function returned an invalid type: {type(v)}'
+            raise DistillError(err)
 
     def generate_uri(self, url, view_name, param_set):
         namespace = self.namespace_map.get(url, '')
@@ -257,8 +266,8 @@ class DistillRender(object):
             except NoReverseMatch:
                 uri = reverse(view_name_ns, kwargs=param_set)
         else:
-            err = 'Distill function returned an invalid type: {}'
-            raise DistillError(err.format(type(param_set)))
+            err = f'Distill function returned an invalid type: {type(param_set)}'
+            raise DistillError(err)
         return uri
 
     def render_view(self, uri, status_codes, param_set, args, kwargs={}):
@@ -292,11 +301,11 @@ class DistillRender(object):
             handler.set_view(view_func, a, k, view_args)
             response = handler.get_response(request)
         except Exception as err:
-            e = 'Failed to render view "{}": {}'.format(uri, err)
+            e = f'Failed to render view "{uri}": {err}'
             raise DistillError(e) from err
         if response.status_code not in status_codes:
-            err = 'View returned an invalid status code: {} (expected one of {})'
-            raise DistillError(err.format(response.status_code, status_codes))
+            err = f'View returned an invalid status code: {response.status_code} (expected one of {status_codes})'
+            raise DistillError(err)
         return response
 
 
@@ -326,14 +335,14 @@ def copy_static_and_media_files(output_dir, stdout):
     static_url = static_url[1:] if static_url.startswith('/') else static_url
     static_output_dir = os.path.join(output_dir, static_url)
     for file_from, file_to in copy_static(static_root, static_output_dir):
-        stdout('Copying static: {} -> {}'.format(file_from, file_to))
+        stdout(f'Copying static: {file_from} -> {file_to}')
     media_url = str(settings.MEDIA_URL)
     media_root = str(settings.MEDIA_ROOT)
     if media_root:
         media_url = media_url[1:] if media_url.startswith('/') else media_url
         media_output_dir = os.path.join(output_dir, media_url)
         for file_from, file_to in copy_static(media_root, media_output_dir):
-            stdout('Copying media: {} -> {}'.format(file_from, file_to))
+            stdout(f'Copying media: {file_from} -> {file_to}')
     return True
 
 
@@ -382,9 +391,9 @@ def write_file(full_path, content):
             f.write(content)
     except IOError as e:
         if e.errno == errno.EISDIR:
-            err = ('Output path: {} is a directory! Try adding a '
+            err = (f'Output path: {full_path} is a directory! Try adding a '
                     '"distill_file" arg to your distill_url()')
-            raise DistillError(err.format(full_path))
+            raise DistillError(err)
         else:
             raise
 
@@ -405,9 +414,9 @@ def render_to_dir(output_dir, urls_to_distill, stdout):
         full_path, local_uri = get_filepath(output_dir, file_name, page_uri)
         content = http_response.content
         mime = http_response.get('Content-Type')
-        renamed = ' (renamed from "{}")'.format(page_uri) if file_name else ''
-        msg = 'Rendering page: {} -> {} ["{}", {} bytes] {}'
-        stdout(msg.format(local_uri, full_path, mime, len(content), renamed))
+        renamed = f' (renamed from "{page_uri}")' if file_name else ''
+        msg = f'Rendering page: {local_uri} -> {full_path} ["{mime}", {len(content)} bytes] {renamed}'
+        stdout(msg)
         write_file(full_path, content)
     return True
 
