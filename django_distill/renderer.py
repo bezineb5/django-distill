@@ -187,7 +187,7 @@ class DistillRender(object):
     def render_all_urls(self):
         num_workers = int(getattr(settings, "DISTILL_RENDERER_WORKERS", "1"))
         with ThreadPoolExecutor(max_workers=num_workers) as executor:
-            yield executor.map(lambda args: self.render_single_url(*args), self.list_all_urls())
+            yield from executor.map(lambda args: self.render_single_url(*args), self.list_all_urls())
 
     def render_single_url(self, url, file_name_base, status_codes, view_name, a, k, param_set):
         if not param_set:
