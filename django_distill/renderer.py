@@ -304,8 +304,8 @@ class DistillRender(object):
             e = f'Failed to render view "{uri}": {err}'
             raise DistillError(e) from err
         if response.status_code not in status_codes:
-            err = f'View returned an invalid status code: {response.status_code} (expected one of {status_codes})'
-            raise DistillError(err)
+            msg = f'View returned an invalid status code: {response.status_code} (expected one of {status_codes})'
+            raise DistillError(msg)
         return response
 
 
